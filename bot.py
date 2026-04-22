@@ -29,15 +29,13 @@ def test_message():
 def self_ping():
     while True:
         try:
-            url = os.getenv("RAILWAY_STATIC_URL")
-            if url:
-                requests.get(url)
-                print("Self ping success")
+            requests.get("https://finalgroupbot-production.up.railway.app")
+            print("Self ping success")
         except:
             print("Self ping failed")
-        time.sleep(300)  # every 5 minutes
+        time.sleep(300)
 
-# ================= FLASK APP =================
+# ================= FLASK =================
 app = Flask(__name__)
 
 @app.route("/")
@@ -48,12 +46,9 @@ def home():
 if __name__ == "__main__":
     print("Bot Started...")
 
-    # Send test message once at startup
     test_message()
 
-    # Start self ping thread
     threading.Thread(target=self_ping).start()
 
-    # Run Flask server
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
