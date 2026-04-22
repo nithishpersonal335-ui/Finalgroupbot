@@ -1,16 +1,16 @@
 import requests
 import time
 import threading
+import os
 from flask import Flask
 
-# ===== YOUR TELEGRAM DETAILS =====
-BOT_TOKEN = "8285229070:AAGZQnCbjULqMUsZkmNMBSG9NCh3WlI2bNo"
-CHAT_ID = "1207682165"   # Replace with group ID later
+# ===== ENV VARIABLES =====
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
-# ===== YOUR RAILWAY URL =====
 APP_URL = "https://finalgroupbot-production.up.railway.app"
 
-# ===== TELEGRAM FUNCTION =====
+# ===== TELEGRAM =====
 def send_msg(text):
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -18,7 +18,7 @@ def send_msg(text):
     except Exception as e:
         print("Telegram error:", e)
 
-# ===== EMA SERIES (FULL DAY FIX) =====
+# ===== EMA SERIES =====
 def ema_series(prices, period):
     k = 2 / (period + 1)
     ema_vals = [prices[0]]
@@ -68,35 +68,31 @@ last_confirmed = {}
 last_target = {}
 last_orb = {}
 
-# ===== MAIN CHECK =====
+# ===== LOGIC =====
 def check(symbol, name):
-    global last_fast, last_confirmed, last_target, last_orb
-
     prices, volumes = get_data(symbol)
 
     if len(prices) < 15:
-        print(name, "waiting for data...")
+        print(name, "waiting...")
         return
 
-    # EMA
     ema9 = ema_series(prices, 9)
     ema15 = ema_series(prices, 15)
 
-    if len(ema9) < 2 or len(ema15) < 2:
+    if len(ema9) < 2:
         return
 
     ema9_prev = ema9[-2]
     ema15_prev = ema15[-2]
-
     ema9_now = ema9[-1]
     ema15_now = ema15[-1]
 
-    current_price = prices[-1]
-    prev_price = prices[-2]
+    price = prices[-1]
+    prev = prices[-2]
 
-    current_vwap = vwap(prices, volumes)
+    vw = vwap(prices, volumes)
 
-    # ===== 1. EMA CROSS =====
+    # 1. EMA
     if ema9_prev < ema15_prev and ema9_now > ema15_now:
         if last_fast.get(name) != "BUY":
             send_msg(f"{name} EMA BUY ⚡")
@@ -107,79 +103,73 @@ def check(symbol, name):
             send_msg(f"{name} EMA SELL ⚡")
             last_fast[name] = "SELL"
 
-    # ===== 2. CONFIRMED =====
-    if current_vwap:
-        if ema9_prev < ema15_prev and ema9_now > ema15_now and current_price > current_vwap:
+    # 2. CONFIRMED
+    if vw:
+        if ema9_now > ema15_now and price > vw:
             if last_confirmed.get(name) != "BUY":
                 send_msg(f"{name} BUY 🔼 (Confirmed)")
                 last_confirmed[name] = "BUY"
 
-        elif ema9_prev > ema15_prev and ema9_now < ema15_now and current_price < current_vwap:
+        elif ema9_now < ema15_now and price < vw:
             if last_confirmed.get(name) != "SELL":
                 send_msg(f"{name} SELL 🔽 (Confirmed)")
                 last_confirmed[name] = "SELL"
 
-    # ===== 3. TARGET (40pt logic) =====
-    if current_vwap:
-        bullish = current_price - prev_price > 0.2 * current_price / 100
-        bearish = prev_price - current_price > 0.2 * current_price / 100
-
-        if ema9_now > ema15_now and current_price > current_vwap and bullish:
+    # 3. TARGET
+    if vw:
+        if ema9_now > ema15_now and price > vw and (price - prev) > 0.2:
             if last_target.get(name) != "BUY":
                 send_msg(f"{name} TARGET BUY 🎯")
                 last_target[name] = "BUY"
 
-        elif ema9_now < ema15_now and current_price < current_vwap and bearish:
+        elif ema9_now < ema15_now and price < vw and (prev - price) > 0.2:
             if last_target.get(name) != "SELL":
                 send_msg(f"{name} TARGET SELL 🎯")
                 last_target[name] = "SELL"
 
-    # ===== 4. ORB =====
-    if len(prices) >= 3:
-        orb_high = max(prices[:3])
-        orb_low = min(prices[:3])
+    # 4. ORB
+    if len(prices) >= 3 and vw:
+        high = max(prices[:3])
+        low = min(prices[:3])
 
-        if current_vwap:
-            if current_price > orb_high and current_price > current_vwap:
-                if last_orb.get(name) != "BUY":
-                    send_msg(f"{name} ORB BUY 🚀")
-                    last_orb[name] = "BUY"
+        if price > high and price > vw:
+            if last_orb.get(name) != "BUY":
+                send_msg(f"{name} ORB BUY 🚀")
+                last_orb[name] = "BUY"
 
-            elif current_price < orb_low and current_price < current_vwap:
-                if last_orb.get(name) != "SELL":
-                    send_msg(f"{name} ORB SELL 🔻")
-                    last_orb[name] = "SELL"
+        elif price < low and price < vw:
+            if last_orb.get(name) != "SELL":
+                send_msg(f"{name} ORB SELL 🔻")
+                last_orb[name] = "SELL"
 
-# ===== BOT LOOP =====
+# ===== LOOP =====
 def run_bot():
-    send_msg("Bot started (Final Version ✅)")
+    send_msg("Bot started ✅")
 
     while True:
         try:
             check("^NSEI", "NIFTY")
             check("^NSEBANK", "BANKNIFTY")
 
-            # self ping (prevent sleep)
+            # self ping
             try:
                 requests.get(APP_URL, timeout=5)
-                print("Self ping success")
             except:
-                print("Self ping failed")
+                pass
 
-            time.sleep(300)  # 5 minutes
+            time.sleep(300)
 
         except Exception as e:
-            print("Main error:", e)
+            print("Error:", e)
             time.sleep(60)
 
-# ===== FLASK SERVER =====
+# ===== FLASK =====
 app = Flask(__name__)
 
 @app.route("/")
 def home():
     return "Bot running"
 
-# ===== START =====
 if __name__ == "__main__":
     threading.Thread(target=run_bot).start()
     app.run(host="0.0.0.0", port=8080)
