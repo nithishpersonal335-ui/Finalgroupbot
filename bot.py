@@ -3,12 +3,14 @@ import time
 import threading
 from flask import Flask
 
+# ===== YOUR TELEGRAM DETAILS =====
 BOT_TOKEN = "8285229070:AAGZQnCbjULqMUsZkmNMBSG9NCh3WlI2bNo"
-CHAT_ID = "1207682165"
+CHAT_ID = "1207682165"   # Replace with group ID later
 
-APP_URL = "https://simplebot-production-11a0.up.railway.app"
+# ===== YOUR RAILWAY URL =====
+APP_URL = "https://finalgroupbot-production.up.railway.app"
 
-# ===== TELEGRAM =====
+# ===== TELEGRAM FUNCTION =====
 def send_msg(text):
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -16,7 +18,7 @@ def send_msg(text):
     except Exception as e:
         print("Telegram error:", e)
 
-# ===== EMA SERIES (FIXED) =====
+# ===== EMA SERIES (FULL DAY FIX) =====
 def ema_series(prices, period):
     k = 2 / (period + 1)
     ema_vals = [prices[0]]
@@ -51,8 +53,8 @@ def get_data(symbol):
         closes = result["indicators"]["quote"][0]["close"]
         volumes = result["indicators"]["quote"][0]["volume"]
 
-        closes = [c for c in closes if c]
-        volumes = [v for v in volumes if v]
+        closes = [c for c in closes if c is not None]
+        volumes = [v for v in volumes if v is not None]
 
         return closes, volumes
 
@@ -66,7 +68,7 @@ last_confirmed = {}
 last_target = {}
 last_orb = {}
 
-# ===== MAIN LOGIC =====
+# ===== MAIN CHECK =====
 def check(symbol, name):
     global last_fast, last_confirmed, last_target, last_orb
 
@@ -76,7 +78,7 @@ def check(symbol, name):
         print(name, "waiting for data...")
         return
 
-    # EMA SERIES (FULL DAY WORKING)
+    # EMA
     ema9 = ema_series(prices, 9)
     ema15 = ema_series(prices, 15)
 
@@ -117,7 +119,7 @@ def check(symbol, name):
                 send_msg(f"{name} SELL 🔽 (Confirmed)")
                 last_confirmed[name] = "SELL"
 
-    # ===== 3. TARGET (40pt) =====
+    # ===== 3. TARGET (40pt logic) =====
     if current_vwap:
         bullish = current_price - prev_price > 0.2 * current_price / 100
         bearish = prev_price - current_price > 0.2 * current_price / 100
@@ -157,25 +159,27 @@ def run_bot():
             check("^NSEI", "NIFTY")
             check("^NSEBANK", "BANKNIFTY")
 
-            # self ping (keep alive)
+            # self ping (prevent sleep)
             try:
                 requests.get(APP_URL, timeout=5)
+                print("Self ping success")
             except:
-                pass
+                print("Self ping failed")
 
-            time.sleep(300)
+            time.sleep(300)  # 5 minutes
 
         except Exception as e:
             print("Main error:", e)
             time.sleep(60)
 
-# ===== FLASK =====
+# ===== FLASK SERVER =====
 app = Flask(__name__)
 
 @app.route("/")
 def home():
     return "Bot running"
 
+# ===== START =====
 if __name__ == "__main__":
     threading.Thread(target=run_bot).start()
     app.run(host="0.0.0.0", port=8080)
