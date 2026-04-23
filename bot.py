@@ -1,49 +1,62 @@
 import requests
 import time
 
-# ✅ YOUR DETAILS
+# ===== CONFIG =====
 BOT_TOKEN = "8694926384:AAGE_6UPkci3OcS1_QzPu7Vj5nVoQnBYsvU"
 CHAT_ID = "1207682165"
 
-# ✅ TELEGRAM SEND FUNCTION
-def send_telegram_message(message):
+# ===== TELEGRAM FUNCTION =====
+def send_message(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {
         "chat_id": CHAT_ID,
-        "text": message
+        "text": msg
     }
-
     try:
         res = requests.post(url, data=data)
-        print("Message sent:", res.text)
+        print("Message:", res.text)
     except Exception as e:
         print("Error:", e)
 
-# ✅ TEST ON START
+# ===== START MESSAGE =====
+send_message("✅ Bot Started & Running")
+
+# ===== SIGNAL FUNCTIONS =====
+
+# 1️⃣ EMA CROSSOVER (FULL DAY)
+def ema_crossover():
+    send_message("📊 EMA 9/15 Crossover Signal")
+
+# 2️⃣ CONFIRMED SIGNAL
+def confirmed_signal():
+    send_message("✅ Confirmed Buy/Sell Signal")
+
+# 3️⃣ 40 POINT TARGET SYSTEM
+def target_40():
+    send_message("🎯 40 Points Target Signal")
+
+# 4️⃣ ORB SIGNAL
+def orb_signal():
+    send_message("🚀 ORB Breakout Signal")
+
+# ===== TEST MESSAGE =====
 def test_message():
-    send_telegram_message("🚀 Bot Started Successfully!")
+    send_message("🧪 Test Message Working")
 
-# ✅ SAMPLE SIGNALS LOOP (replace with your logic)
-def run_bot():
-    while True:
-        print("Checking signals...")
+test_message()
 
-        # 🔹 TYPE 1: EMA crossover
-        send_telegram_message("📊 EMA 9/15 Crossover Signal")
+# ===== MAIN LOOP =====
+while True:
+    # 👉 Replace below with your real market logic later
 
-        # 🔹 TYPE 2: Confirmed signal
-        send_telegram_message("✅ Confirmed Trade Signal")
+    ema_crossover()
+    time.sleep(5)
 
-        # 🔹 TYPE 3: 40 points target
-        send_telegram_message("🎯 40 Points Strategy Signal")
+    confirmed_signal()
+    time.sleep(5)
 
-        # 🔹 TYPE 4: ORB breakout
-        send_telegram_message("🔥 ORB Breakout Signal")
+    target_40()
+    time.sleep(5)
 
-        time.sleep(5)  # every 1 minute
-
-# 🚀 MAIN
-if __name__ == "__main__":
-    print("Bot Started...")
-    test_message()
-    run_bot()
+    orb_signal()
+    time.sleep(60)
