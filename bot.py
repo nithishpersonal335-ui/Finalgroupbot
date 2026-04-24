@@ -5,36 +5,31 @@ import pandas as pd
 import yfinance as yf
 from flask import Flask
 
-# ================== CONFIG ==================
 BOT_TOKEN = "8694926384:AAGE_6UPkci3OcS1_QzPu7Vj5nVoQnBYsvU"
 CHAT_ID = "1207682165"
 
-# Symbols
 NIFTY = "^NSEI"
 BANKNIFTY = "^NSEBANK"
 
-# ================== TELEGRAM ==================
-def send_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHAT_ID,
-        "text": text
-    }
-    try:
-        res = requests.post(url, data=data)
-        print("Message:", res.text)
-    except Exception as e:
-        print("Error:", e)
+app = Flask(__name__)
 
-# ================== SIGNAL LOGIC ==================
+# ================= TELEGRAM =================
+def send_message(text):
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        requests.post(url, data={"chat_id": CHAT_ID, "text": text})
+    except Exception as e:
+        print("Telegram Error:", e)
+
+# ================= SIGNAL =================
 def check_signals(name, symbol):
     try:
         data = yf.download(symbol, interval="5m", period="1d")
 
-        if data.empty:
+        if data is None or len(data) < 20:
+            print(f"{name}: Not enough data")
             return
 
-        # Indicators
         data["EMA9"] = data["Close"].ewm(span=9).mean()
         data["EMA15"] = data["Close"].ewm(span=15).mean()
         data["VWAP"] = (data["Close"] * data["Volume"]).cumsum() / data["Volume"].cumsum()
@@ -42,44 +37,43 @@ def check_signals(name, symbol):
         last = data.iloc[-1]
         prev = data.iloc[-2]
 
-        # ================== 4 SIGNALS ==================
-        
-        # 1. EMA Crossover BUY
+        # BUY EMA
         if prev["EMA9"] < prev["EMA15"] and last["EMA9"] > last["EMA15"]:
-            send_message(f"{name} BUY 📈 EMA 9/15 Crossover")
+            send_message(f"{name} BUY 📈 EMA Cross")
 
-        # 2. EMA Crossover SELL
+        # SELL EMA
         elif prev["EMA9"] > prev["EMA15"] and last["EMA9"] < last["EMA15"]:
-            send_message(f"{name} SELL 📉 EMA 9/15 Crossdown")
+            send_message(f"{name} SELL 📉 EMA Cross")
 
-        # 3. VWAP Breakout BUY
-        elif last["Close"] > last["VWAP"] and prev["Close"] < prev["VWAP"]:
-            send_message(f"{name} BUY 🚀 VWAP Breakout")
+        # VWAP BUY
+        elif prev["Close"] < prev["VWAP"] and last["Close"] > last["VWAP"]:
+            send_message(f"{name} BUY 🚀 VWAP Break")
 
-        # 4. VWAP Breakdown SELL
-        elif last["Close"] < last["VWAP"] and prev["Close"] > prev["VWAP"]:
-            send_message(f"{name} SELL 🔻 VWAP Breakdown")
+        # VWAP SELL
+        elif prev["Close"] > prev["VWAP"] and last["Close"] < last["VWAP"]:
+            send_message(f"{name} SELL 🔻 VWAP Break")
 
     except Exception as e:
         print("Signal Error:", e)
 
-# ================== BOT LOOP ==================
+# ================= LOOP =================
 def run_bot():
     send_message("Bot Started ✅")
     while True:
         print("Checking signals...")
         check_signals("NIFTY", NIFTY)
         check_signals("BANKNIFTY", BANKNIFTY)
-        time.sleep(60)  # 1 minute delay
+        time.sleep(60)
 
-# ================== FLASK SERVER ==================
-app = Flask(__name__)
-
+# ================= ROUTE =================
 @app.route('/')
 def home():
     return "Bot is running"
 
-# ================== MAIN ==================
+# ================= START =================
 if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
+    t = threading.Thread(target=run_bot)
+    t.daemon = True
+    t.start()
+
     app.run(host="0.0.0.0", port=8080)
