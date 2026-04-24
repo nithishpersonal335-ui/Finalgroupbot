@@ -4,6 +4,7 @@ import threading
 import pandas as pd
 import yfinance as yf
 from flask import Flask
+from datetime import datetime
 
 # ================= CONFIG =================
 BOT_TOKEN = "8694926384:AAGE_6UPkci3OcS1_QzPu7Vj5nVoQnBYsvU"
@@ -14,6 +15,12 @@ BANKNIFTY = "^NSEBANK"
 
 app = Flask(__name__)
 
+# ================= STATE (NO DUPLICATES) =================
+last_signal = {
+    "NIFTY": None,
+    "BANKNIFTY": None
+}
+
 # ================= TELEGRAM =================
 def send_message(text):
     try:
@@ -23,7 +30,14 @@ def send_message(text):
     except Exception as e:
         print("Telegram Error:", e)
 
-# ================= SIGNAL =================
+# ================= MARKET TIME =================
+def is_market_open():
+    now = datetime.now()
+    start = now.replace(hour=9, minute=15, second=0)
+    end = now.replace(hour=15, minute=30, second=0)
+    return start <= now <= end
+
+# ================= DATA =================
 def get_data(symbol):
     try:
         data = yf.download(symbol, interval="5m", period="1d")
@@ -33,9 +47,11 @@ def get_data(symbol):
     except:
         return None
 
+# ================= SIGNAL =================
 def check_signals(name, symbol):
-    data = get_data(symbol)
+    global last_signal
 
+    data = get_data(symbol)
     if data is None:
         print(f"{name}: No data")
         return
@@ -43,35 +59,24 @@ def check_signals(name, symbol):
     try:
         data["EMA9"] = data["Close"].ewm(span=9).mean()
         data["EMA15"] = data["Close"].ewm(span=15).mean()
-        data["VWAP"] = (data["Close"] * data["Volume"]).cumsum() / data["Volume"].cumsum()
 
         last = data.iloc[-1]
         prev = data.iloc[-2]
 
-        # 1️⃣ EMA Crossover
+        signal = None
+
+        # BUY crossover
         if prev["EMA9"] < prev["EMA15"] and last["EMA9"] > last["EMA15"]:
-            send_message(f"{name} BUY 📈 EMA Crossover")
+            signal = "BUY"
 
+        # SELL crossover
         elif prev["EMA9"] > prev["EMA15"] and last["EMA9"] < last["EMA15"]:
-            send_message(f"{name} SELL 📉 EMA Crossdown")
+            signal = "SELL"
 
-        # 2️⃣ Confirmed (EMA + VWAP)
-        elif last["EMA9"] > last["EMA15"] and last["Close"] > last["VWAP"]:
-            send_message(f"{name} STRONG BUY ✅ (EMA + VWAP)")
-
-        elif last["EMA9"] < last["EMA15"] and last["Close"] < last["VWAP"]:
-            send_message(f"{name} STRONG SELL ❌ (EMA + VWAP)")
-
-        # 3️⃣ 40 Points Momentum (simple logic)
-        elif abs(last["Close"] - prev["Close"]) > 40:
-            send_message(f"{name} ⚡ Momentum Move (40 pts)")
-
-        # 4️⃣ ORB (Opening Range Breakout)
-        elif last["High"] > data["High"].iloc[:5].max():
-            send_message(f"{name} 🚀 ORB Breakout")
-
-        elif last["Low"] < data["Low"].iloc[:5].min():
-            send_message(f"{name} 🔻 ORB Breakdown")
+        # ✅ SEND ONLY FRESH SIGNAL
+        if signal and last_signal[name] != signal:
+            last_signal[name] = signal
+            send_message(f"{name} {signal} 📈 EMA 9/15 Crossover")
 
     except Exception as e:
         print("Signal Error:", e)
@@ -79,10 +84,15 @@ def check_signals(name, symbol):
 # ================= LOOP =================
 def run_bot():
     send_message("Bot Started ✅")
+
     while True:
-        print("Checking signals...")
-        check_signals("NIFTY", NIFTY)
-        check_signals("BANKNIFTY", BANKNIFTY)
+        if is_market_open():
+            print("Market Open - Checking...")
+            check_signals("NIFTY", NIFTY)
+            check_signals("BANKNIFTY", BANKNIFTY)
+        else:
+            print("Market Closed ❌")
+
         time.sleep(60)
 
 # ================= FLASK =================
