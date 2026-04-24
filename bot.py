@@ -5,6 +5,7 @@ import pandas as pd
 import yfinance as yf
 from flask import Flask
 from datetime import datetime
+import pytz
 
 # ================= CONFIG =================
 BOT_TOKEN = "8694926384:AAGE_6UPkci3OcS1_QzPu7Vj5nVoQnBYsvU"
@@ -30,11 +31,14 @@ def send_message(text):
     except Exception as e:
         print("Telegram Error:", e)
 
-# ================= MARKET TIME =================
+# ================= MARKET TIME (IST FIXED) =================
 def is_market_open():
-    now = datetime.now()
-    start = now.replace(hour=9, minute=15, second=0)
-    end = now.replace(hour=15, minute=30, second=0)
+    india = pytz.timezone('Asia/Kolkata')
+    now = datetime.now(india)
+
+    start = now.replace(hour=9, minute=15, second=0, microsecond=0)
+    end = now.replace(hour=15, minute=30, second=0, microsecond=0)
+
     return start <= now <= end
 
 # ================= DATA =================
@@ -44,7 +48,8 @@ def get_data(symbol):
         if data is None or len(data) < 20:
             return None
         return data
-    except:
+    except Exception as e:
+        print("Data Error:", e)
         return None
 
 # ================= SIGNAL =================
@@ -73,7 +78,7 @@ def check_signals(name, symbol):
         elif prev["EMA9"] > prev["EMA15"] and last["EMA9"] < last["EMA15"]:
             signal = "SELL"
 
-        # ✅ SEND ONLY FRESH SIGNAL
+        # SEND ONLY FRESH SIGNAL
         if signal and last_signal[name] != signal:
             last_signal[name] = signal
             send_message(f"{name} {signal} 📈 EMA 9/15 Crossover")
@@ -85,13 +90,21 @@ def check_signals(name, symbol):
 def run_bot():
     send_message("Bot Started ✅")
 
+    was_open = False
+
     while True:
         if is_market_open():
-            print("Market Open - Checking...")
+            if not was_open:
+                print("Market Open Started 🚀")
+                was_open = True
+
             check_signals("NIFTY", NIFTY)
             check_signals("BANKNIFTY", BANKNIFTY)
+
         else:
-            print("Market Closed ❌")
+            if was_open:
+                print("Market Closed ❌")
+                was_open = False
 
         time.sleep(60)
 
